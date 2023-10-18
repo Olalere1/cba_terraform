@@ -20,4 +20,9 @@ variable "subnets_private" {
     default = ["aws_subnet.cba_private1","aws_subnet.cba_private2"]
 }
 
+variable "subnets" {
+   type = list
+   default = ["aws_subnet.cba_public1","aws_subnet.cba_public2","aws_subnet.cba_private1","aws_subnet.cba_private2"]
+}
+
 

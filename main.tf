@@ -148,7 +148,7 @@ resource "aws_route_table" "cba_public_rt" {
 # Creating a NAT gateway to be attached to the private route table
 
 resource "aws_nat_gateway" "CustomNAT" {
-  subnet_id     = aws_subnet.cba_public1
+  subnet_id     = "aws_subnet.cba_public1"
 
   tags = {
     Name = "CustomNAT"
@@ -292,7 +292,7 @@ resource "aws_autoscaling_group" "autoscaling" {
   health_check_type         = "ELB"
   health_check_grace_period = 300
   launch_configuration      = aws_launch_configuration.ec2.id
-  vpc_zone_identifier       = aws_subnet.cba_public2.id
+  vpc_zone_identifier       = var.subnets
 
   target_group_arns = [aws_lb_target_group.alb-target-group.arn]
 
@@ -385,11 +385,11 @@ resource "aws_iam_instance_profile" "session-manager" {
 resource "aws_instance" "bastion" {
   ami                         = data.aws_ssm_parameter.instance_ami.value
   instance_type               = "${var.instance_type}"
-  key_name                    = aws_key_pair.terraform-lab.key_name
+  key_name                    = var.key_name
   iam_instance_profile        = aws_iam_instance_profile.session-manager.id
   associate_public_ip_address = true
-  security_groups            = [aws_security_group.ec2.id]
-  subnet_id                   = aws_subnet.public-subnet-1.id
+  security_groups            = [aws_security_group.cba_tf_sg.id]
+  subnet_id                   = "aws_subnet.cba_public1"
   tags = {
     Name = "Bastion"
   }
