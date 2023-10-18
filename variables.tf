@@ -39,3 +39,8 @@ variable "db_name" {
   description = "Database name"
   default     = "mydb"
 }
+
+variable "target_group_arn" {
+    type = list
+    default = ["aws_lb_target_group.alb-target-group.arn", "aws_lb_target_group.alb-target-group2.arn"]
+}

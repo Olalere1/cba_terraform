@@ -13,9 +13,9 @@ resource "aws_vpc" "my_vpc" {
   }
 }
 
-# Create a new security group for the load balancer
-resource "aws_security_group" "sg_lb" {
-  name   = "sg_lb"
+# Create a new security group for the public load balancer
+resource "aws_security_group" "sg_pblb" {
+  name   = "sg_pblb"
   vpc_id = aws_vpc.my_vpc.id
 
   # HTTP access from anywhere
@@ -43,9 +43,9 @@ resource "aws_security_group" "sg_lb" {
 }
 
 
-# Instance Security group (traffic ALB -> EC2, ssh -> EC2)
-resource "aws_security_group" "cba_tf_sg" {
-  name        = "cba_tf_sg"
+# Security group for the private load balancer (traffic publicLB -> privateLB)
+resource "aws_security_group" "sg_prlb" {
+  name        = "sg_prlb"
   description = "Allows inbound access from the ALB only"
   vpc_id      = aws_vpc.my_vpc.id
 
@@ -53,14 +53,7 @@ resource "aws_security_group" "cba_tf_sg" {
     from_port       = 0
     to_port         = 0
     protocol        = "-1"
-    security_groups = [aws_security_group.sg_lb.id]
-  }
-
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    security_groups = ["aws_security_group.sg_pblb"]
   }
 
   egress {
@@ -148,7 +141,7 @@ resource "aws_route_table" "cba_public_rt" {
 # Creating a NAT gateway to be attached to the private route table
 
 resource "aws_nat_gateway" "CustomNAT" {
-  subnet_id     = "aws_subnet.cba_public1"
+  subnet_id     = "aws_subnet.cba_public2"
 
   tags = {
     Name = "CustomNAT"
@@ -171,12 +164,12 @@ resource "aws_route_table" "cba_private_rt" {
 }
 
 resource "aws_route_table_association" "cba_subnet_rt_public" {
-  subnet_id      = "aws_subnet.cba_public1.id"
+  subnet_id      = "var.subnets_public"
   route_table_id = aws_route_table.cba_public_rt.id
 }
 
 resource "aws_route_table_association" "cba_subnet_rt_private" {
-  subnet_id      = "aws_subnet.cba_private1.id"
+  subnet_id      = "var.subnets_private"
   route_table_id = aws_route_table.cba_private_rt.id
 }
 
@@ -189,42 +182,55 @@ data "aws_key_pair" "sample_kp" {
   key_name = var.key_name
 }
 
-resource "aws_instance" "cba_tf_instance1" {
-  ami             = data.aws_ssm_parameter.instance_ami.value
-  instance_type   = var.instance_type
-  subnet_id       = aws_subnet.cba_public1.id
-  security_groups = [aws_security_group.cba_tf_sg.id]
-  key_name        = var.key_name
-  user_data       = fileexists("install_apache.sh") ? file("install_apache.sh") : null
-
-
+# Bastion instance
+resource "aws_instance" "bastion" {
+  ami                         = data.aws_ssm_parameter.instance_ami.value
+  instance_type               = "${var.instance_type}"
+  key_name                    = var.key_name
+  iam_instance_profile        = aws_iam_instance_profile.session-manager.id
+  associate_public_ip_address = true
+  security_groups            = ["aws_security_group.sg_pblb"]
+  subnet_id                   = "aws_subnet.cba_public1"
   tags = {
-    "NAME" = "ApacheInstance"
+    Name = "Bastion"
   }
-
 }
+
+
+#resource "aws_instance" "cba_tf_instance1" {
+  #ami             = data.aws_ssm_parameter.instance_ami.value
+  #instance_type   = var.instance_type
+  #subnet_id       = aws_subnet.cba_public1.id
+  #security_groups = [aws_security_group.cba_tf_sg.id]
+  #key_name        = var.key_name
+  #user_data       = fileexists("install_apache.sh") ? file("install_apache.sh") : null
+
+  #tags = {
+    #"NAME" = "ApacheInstance"
+  #}
+
+#}
 
 #nat_gateway_id = aws_nat_gateway.CustomNAT.id as security group for the private instance
-
-resource "aws_instance" "cba_tf_instance2" {
-  ami             = data.aws_ssm_parameter.instance_ami.value
-  instance_type   = var.instance_type
-  subnet_id       = aws_subnet.cba_private1.id
-  security_groups = [aws_nat_gateway.CustomNAT.id]
-  key_name        = var.key_name
+#resource "aws_instance" "cba_tf_instance2" {
+  #ami             = data.aws_ssm_parameter.instance_ami.value
+  #instance_type   = var.instance_type
+  #subnet_id       = aws_subnet.cba_private1.id
+  #security_groups = [aws_nat_gateway.CustomNAT.id]
+  #key_name        = var.key_name
  
-  tags = {
-    "NAME" = "PrivateInstance"
-  }
+  #tags = {
+   # "NAME" = "PrivateInstance"
+  #}
 
-}
+#}
 
 # Create a public load balancer
 resource "aws_lb" "loadbalancer_public" {
   name            = "loadbalancer-public"
   load_balancer_type = "application" 
-  subnets         = var.subnets_public
-  security_groups = [aws_security_group.sg_lb.id]
+  #subnets         = var.subnets_public
+  security_groups = [aws_security_group.sg_pblb.id]
   internal        = "false"
   enable_cross_zone_load_balancing = "true"
 }
@@ -246,13 +252,27 @@ resource "aws_lb_target_group" "alb-target-group" {
   }
 }
 
+#create listener for public load balancer
+resource "aws_lb_listener" "listener1" {
+  load_balancer_arn = aws_lb.loadbalancer_public.arn                
+  port              = "80"
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.alb-target-group.arn
+  }
+}
+
+
+
 
 # Create a private load balancer
 resource "aws_lb" "loadbalancer_private" {
   name            = "loadbalancer-private"
   load_balancer_type = "application" 
-  subnets         = var.subnets_private
-  security_groups = [aws_nat_gateway.CustomNAT.id]
+  #subnets         = var.subnets_private
+  security_groups = [aws_security_group.sg_prlb.id]
   internal        = "true"
   enable_cross_zone_load_balancing = "true"
 }
@@ -260,7 +280,7 @@ resource "aws_lb" "loadbalancer_private" {
 resource "aws_lb_target_group" "alb-target-group2" {
   name     = "alb-target-group2"
   port     = 80
-  protocol = "tcp"
+  protocol = "tcp"                                    # Not sure if this is the right protocol
   vpc_id   = aws_vpc.my_vpc.id
   target_type = "instance"
 
@@ -274,18 +294,32 @@ resource "aws_lb_target_group" "alb-target-group2" {
   }
 }
 
+#create listener for private load balancer
+resource "aws_lb_listener" "listener2" {
+  load_balancer_arn = aws_lb.loadbalancer_private.arn
+  port              = "80"                            # Not sure if this should be the right port and protocol for private LB listener
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.alb-target-group2.arn
+  }
+}
+
+
+
 resource "aws_launch_configuration" "ec2" {
   name                        = "ec2-launch-config"
   image_id                    = data.aws_ssm_parameter.instance_ami.value
   instance_type               = "${var.instance_type}"
-  security_groups             = [aws_security_group.cba_tf_sg.id]
+  security_groups             = [aws_security_group.sg_pblb.id]
   key_name                    = var.key_name
   iam_instance_profile        = aws_iam_instance_profile.session-manager.id
   associate_public_ip_address = false
 }
 
 
-resource "aws_autoscaling_group" "autoscaling" {
+resource "aws_autoscaling_group" "autoscaling" {                           # To do 1: Specify the security for the autoscaling group!
   desired_capacity          = 2
   max_size                  = 5
   min_size                  = 1
@@ -294,8 +328,8 @@ resource "aws_autoscaling_group" "autoscaling" {
   launch_configuration      = aws_launch_configuration.ec2.id
   vpc_zone_identifier       = var.subnets
 
-  target_group_arns = [aws_lb_target_group.alb-target-group.arn]
-
+  target_group_arns = var.target_group_arn
+  count = length(var.target_group_arn)                                    #Watch out for this if it will throw an error
   tag {
     key                 = "Name"
     value               = "example-asg"
@@ -306,11 +340,7 @@ resource "aws_autoscaling_group" "autoscaling" {
 data "aws_region" "current"{}
 
 
-
-
-
-#Auto Scaling group; Launch template and Bastion Host in a Public subnet
-
+#Launch template
 
 data "aws_iam_policy_document" "ec2" {
   statement {
@@ -382,21 +412,6 @@ resource "aws_iam_instance_profile" "session-manager" {
   role  = aws_iam_role.session-manager.name
 }
 
-resource "aws_instance" "bastion" {
-  ami                         = data.aws_ssm_parameter.instance_ami.value
-  instance_type               = "${var.instance_type}"
-  key_name                    = var.key_name
-  iam_instance_profile        = aws_iam_instance_profile.session-manager.id
-  associate_public_ip_address = true
-  security_groups            = [aws_security_group.cba_tf_sg.id]
-  subnet_id                   = "aws_subnet.cba_public1"
-  tags = {
-    Name = "Bastion"
-  }
-}
-
-
-
 
 
 # Database subnet group
@@ -405,7 +420,7 @@ resource "aws_db_subnet_group" "mydb_subnet_group" {
   subnet_ids = var.subnets_private
 }
 
-# Create database
+# Create database                                                           #To do2: Specify the security for the DB using internal Autoscaling group security
 resource "aws_db_instance" "default" {
   count             = 2
   allocated_storage = 20
