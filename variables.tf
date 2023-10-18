@@ -25,4 +25,17 @@ variable "subnets" {
    default = ["aws_subnet.cba_public1","aws_subnet.cba_public2","aws_subnet.cba_private1","aws_subnet.cba_private2"]
 }
 
+variable "db_username" {
+  description = "Username for the RDS instance"
+  default     = "mydb"
+}
 
+variable "db_password" {
+  description = "Password for the RDS instance"
+  default     = "mydbinstancepassword"
+}
+
+variable "db_name" {
+  description = "Database name"
+  default     = "mydb"
+}
