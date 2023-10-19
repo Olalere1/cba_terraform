@@ -14,8 +14,8 @@ resource "aws_vpc" "my_vpc" {
 }
 
 # Create a new security group for the public load balancer
-resource "aws_security_group" "sg_pblb" {
-  name   = "sg_pblb"
+resource "aws_security_group" "public_sg-pblb" {
+  name   = "public_sg-pblb"
   vpc_id = aws_vpc.my_vpc.id
 
   # HTTP access from anywhere
@@ -44,8 +44,8 @@ resource "aws_security_group" "sg_pblb" {
 
 
 # Security group for the private load balancer (traffic publicLB -> privateLB)
-resource "aws_security_group" "sg_prlb" {
-  name        = "sg_prlb"
+resource "aws_security_group" "private_sg-prlb" {
+  name        = "private_sg_prlb"
   description = "Allows inbound access from the ALB only"
   vpc_id      = aws_vpc.my_vpc.id
 
@@ -53,7 +53,7 @@ resource "aws_security_group" "sg_prlb" {
     from_port       = 0
     to_port         = 0
     protocol        = "-1"
-    security_groups = ["aws_security_group.sg_pblb"]
+    security_groups = ["aws_security_group.public_sg-pblb"]
   }
 
   egress {
@@ -141,7 +141,7 @@ resource "aws_route_table" "cba_public_rt" {
 # Creating a NAT gateway to be attached to the private route table
 
 resource "aws_nat_gateway" "CustomNAT" {
-  subnet_id     = "aws_subnet.cba_public2"
+  subnet_id     = "aws_subnet.cba_public2.id"
 
   tags = {
     Name = "CustomNAT"
@@ -164,7 +164,7 @@ resource "aws_route_table" "cba_private_rt" {
 }
 
 resource "aws_route_table_association" "cba_subnet_rt_public" {
-  subnet_id      = "var.subnets_public"
+  subnet_id      = "var.subnets_public.id"
   route_table_id = aws_route_table.cba_public_rt.id
 }
 
@@ -189,8 +189,8 @@ resource "aws_instance" "bastion" {
   key_name                    = var.key_name
   iam_instance_profile        = aws_iam_instance_profile.session-manager.id
   associate_public_ip_address = true
-  security_groups            = ["aws_security_group.sg_pblb"]
-  subnet_id                   = "aws_subnet.cba_public1"
+  security_groups            = ["aws_security_group.public_sg-pblb"]
+  subnet_id                   = "aws_subnet.cba_public1.id"
   tags = {
     Name = "Bastion"
   }
@@ -230,7 +230,7 @@ resource "aws_lb" "loadbalancer_public" {
   name            = "loadbalancer-public"
   load_balancer_type = "application" 
   #subnets         = var.subnets_public
-  security_groups = [aws_security_group.sg_pblb.id]
+  security_groups = [aws_security_group.public_sg-pblb.id]
   internal        = "false"
   enable_cross_zone_load_balancing = "true"
 }
@@ -272,7 +272,7 @@ resource "aws_lb" "loadbalancer_private" {
   name            = "loadbalancer-private"
   load_balancer_type = "application" 
   #subnets         = var.subnets_private
-  security_groups = [aws_security_group.sg_prlb.id]
+  security_groups = [aws_security_group.public_sg-prlb.id]
   internal        = "true"
   enable_cross_zone_load_balancing = "true"
 }
@@ -312,14 +312,14 @@ resource "aws_launch_configuration" "ec2" {
   name                        = "ec2-launch-config"
   image_id                    = data.aws_ssm_parameter.instance_ami.value
   instance_type               = "${var.instance_type}"
-  security_groups             = [aws_security_group.sg_pblb.id]
+  security_groups             = [aws_security_group.public_sg-pblb.id]
   key_name                    = var.key_name
   iam_instance_profile        = aws_iam_instance_profile.session-manager.id
   associate_public_ip_address = false
 }
 
 
-resource "aws_autoscaling_group" "autoscaling" {                           # To do 1: Specify the security for the autoscaling group!
+resource "aws_autoscaling_group" "autoscaling" {             # To do 1: Specify the security for the autoscaling group or security group for lauch config can suffice!
   desired_capacity          = 2
   max_size                  = 5
   min_size                  = 1
@@ -428,7 +428,7 @@ resource "aws_db_instance" "default" {
   engine            = "mysql"
   engine_version    = "5.7"
   instance_class    = "db.t2.micro"
-  /* name                 = var.db_name  # The name of the database to create when creating the RDS instance */
+  /* name              = var.db_name  # The name of the database to create when creating the RDS instance */
   username             = var.db_username
   password             = var.db_password
   parameter_group_name = "default.mysql5.7"
