@@ -179,7 +179,7 @@ data "aws_ssm_parameter" "instance_ami" {
 }
 
 data "aws_key_pair" "sample_kp" {
-  key_name = var.key_name
+  key_name = "cba_keypair2"
 }
 
 # Bastion instance
@@ -272,7 +272,7 @@ resource "aws_lb" "loadbalancer_private" {
   name            = "loadbalancer-private"
   load_balancer_type = "application" 
   #subnets         = var.subnets_private
-  security_groups = [aws_security_group.public_sg-prlb.id]
+  security_groups = [aws_security_group.private_sg-prlb.id]
   internal        = "true"
   enable_cross_zone_load_balancing = "true"
 }
