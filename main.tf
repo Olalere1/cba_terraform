@@ -14,8 +14,8 @@ resource "aws_vpc" "my_vpc" {
 }
 
 # Create a new security group for the public load balancer
-resource "aws_security_group" "public_sg-pblb" {
-  name   = "public_sg-pblb"
+resource "aws_security_group" "public-sgpblb" {
+  name   = "public-sgpblb"
   vpc_id = aws_vpc.my_vpc.id
 
   # HTTP access from anywhere
@@ -48,8 +48,8 @@ resource "aws_security_group" "public_sg-pblb" {
 
 
 # Security group for the private load balancer (traffic publicLB -> privateLB)
-resource "aws_security_group" "private_sg-prlb" {
-  name        = "private-sg-prlb"
+resource "aws_security_group" "private-sgprlb" {
+  name        = "private-sgprlb"
   description = "Allows inbound access from the ALB only"
   vpc_id      = aws_vpc.my_vpc.id
 
@@ -57,7 +57,7 @@ resource "aws_security_group" "private_sg-prlb" {
     from_port       = 0
     to_port         = 0
     protocol        = "-1"
-    security_groups = ["aws_security_group.public_sg-pblb"]
+    security_groups = ["aws_security_group.public-sgpblb"]
   }
 
   egress {
@@ -146,7 +146,7 @@ resource "aws_route_table" "cba_public_rt" {
 # attached to one of the public subnet; 
 
 resource "aws_eip" "nat_gateway" {
-  vpc = "true"
+  #vpc = "true"
 }
 
 resource "aws_nat_gateway" "CustomNAT" {
@@ -173,7 +173,7 @@ resource "aws_route_table" "cba_private_rt" {
 }
 
 resource "aws_route_table_association" "cba_subnet_rt_public" {
-  subnet_id      = var.subnets_public.id
+  subnet_id      = "var.subnets_public.id"
   route_table_id = aws_route_table.cba_public_rt.id
 }
 
@@ -198,7 +198,7 @@ resource "aws_instance" "bastion" {
   key_name                    = var.key_name
   iam_instance_profile        = aws_iam_instance_profile.session-manager.id
   associate_public_ip_address = true
-  security_groups            = ["aws_security_group.public_sg-pblb"]
+  security_groups            = ["aws_security_group.public_sgpblb"]
   subnet_id                   = "aws_subnet.cba_public1.id"
   tags = {
     Name = "Bastion"
@@ -239,7 +239,7 @@ resource "aws_lb" "loadbalancer_public" {
   name            = "loadbalancer-public"
   load_balancer_type = "application" 
   subnets         = var.subnets_public
-  security_groups = [aws_security_group.public_sg-pblb.id]
+  security_groups = [aws_security_group.public-sgpblb.id]
   internal        = "false"
   enable_cross_zone_load_balancing = "true"
 }
@@ -281,7 +281,7 @@ resource "aws_lb" "loadbalancer_private" {
   name            = "loadbalancer-private"
   load_balancer_type = "application" 
   #subnets         = var.subnets_private
-  security_groups = [aws_security_group.private_sg-prlb.id]
+  security_groups = [aws_security_group.private-sgprlb.id]
   internal        = "true"
   enable_cross_zone_load_balancing = "true"
 }
@@ -289,7 +289,7 @@ resource "aws_lb" "loadbalancer_private" {
 resource "aws_lb_target_group" "alb-target-group2" {
   name     = "alb-target-group2"
   port     = 80
-  protocol = "TCP"                                    # Not sure if this is the right protocol
+  protocol = "TCP"                                   
   vpc_id   = aws_vpc.my_vpc.id
   target_type = "instance"
 
@@ -321,7 +321,7 @@ resource "aws_launch_configuration" "ec2" {
   name                        = "ec2-launch-config"
   image_id                    = data.aws_ssm_parameter.instance_ami.value
   instance_type               = "${var.instance_type}"
-  security_groups             = [aws_security_group.public_sg-pblb.id]
+  security_groups             = [aws_security_group.public-sgpblb.id]
   key_name                    = var.key_name
   iam_instance_profile        = aws_iam_instance_profile.session-manager.id
   associate_public_ip_address = false
@@ -338,7 +338,7 @@ resource "aws_autoscaling_group" "autoscaling" {             # To do 1: Specify 
   vpc_zone_identifier       = var.subnets
 
   target_group_arns = var.target_group_arn
-  count = length(var.target_group_arn)                                    #Watch out for this if it will throw an error
+  count = length(var.target_group_arn)                                    
   tag {
     key                 = "Name"
     value               = "example-asg"
