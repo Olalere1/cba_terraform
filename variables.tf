@@ -1,5 +1,5 @@
 variable "region" {
-  default = "eu-west-1"
+  default = "us-east-1"
 }
 
 variable "instance_type" {
@@ -42,5 +42,5 @@ variable "db_name" {
 
 variable "target_group_arn" {
     type = list
-    default = ["aws_lb_target_group.alb-target-group.arn", "aws_lb_target_group.alb-target-group2.arn"]
+    default = ["aws_alb_target_group.alb-target-group.arn", "aws_alb_target_group.alb-target-group2.arn"]
 }

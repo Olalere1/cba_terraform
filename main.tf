@@ -40,12 +40,16 @@ resource "aws_security_group" "public_sg-pblb" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  tags = {
+    name = "PublicSG"
+  }
 }
 
 
 # Security group for the private load balancer (traffic publicLB -> privateLB)
 resource "aws_security_group" "private_sg-prlb" {
-  name        = "private_sg_prlb"
+  name        = "private-sg-prlb"
   description = "Allows inbound access from the ALB only"
   vpc_id      = aws_vpc.my_vpc.id
 
@@ -80,7 +84,7 @@ resource "aws_subnet" "cba_public1" {
   vpc_id                  = aws_vpc.my_vpc.id
   cidr_block              = "10.0.1.0/24"
   map_public_ip_on_launch = "true"
-  availability_zone       = "eu-west-1a"
+  availability_zone       = "us-east-1a"
 
   tags = {
     Name = "ApachePublicSubnet1"
@@ -91,7 +95,7 @@ resource "aws_subnet" "cba_public2" {
   vpc_id                  = aws_vpc.my_vpc.id
   cidr_block              = "10.0.2.0/24"
   map_public_ip_on_launch = "true"
-  availability_zone       = "eu-west-1b"
+  availability_zone       = "us-east-1b"
 
   tags = {
     Name = "ApachePublicSubnet2"
@@ -102,7 +106,7 @@ resource "aws_subnet" "cba_private1" {
   vpc_id                  = aws_vpc.my_vpc.id
   cidr_block              = "10.0.3.0/24"
   map_public_ip_on_launch = "false"
-  availability_zone       = "eu-west-1a"
+  availability_zone       = "us-east-1a"
 
   tags = {
     Name = "PrivateSubnet1"
@@ -113,7 +117,7 @@ resource "aws_subnet" "cba_private2" {
   vpc_id                  = aws_vpc.my_vpc.id
   cidr_block              = "10.0.4.0/24"
   map_public_ip_on_launch = "false"
-  availability_zone       = "eu-west-1b"
+  availability_zone       = "us-east-1b"
 
   tags = {
     Name = "PrivateSubnet2"
@@ -138,11 +142,16 @@ resource "aws_route_table" "cba_public_rt" {
   }
 }
 
-# Creating a NAT gateway to be attached to the private route table
+# Creating a NAT gateway to enable connectivity from private subnet to the outside world;
+# attached to one of the public subnet; 
+
+resource "aws_eip" "nat_gateway" {
+  vpc = "true"
+}
 
 resource "aws_nat_gateway" "CustomNAT" {
-  subnet_id     = "aws_subnet.cba_public2.id"
-
+  allocation_id = aws_eip.nat_gateway.id
+  subnet_id     = aws_subnet.cba_public2.id
   tags = {
     Name = "CustomNAT"
   }
@@ -164,12 +173,12 @@ resource "aws_route_table" "cba_private_rt" {
 }
 
 resource "aws_route_table_association" "cba_subnet_rt_public" {
-  subnet_id      = "var.subnets_public.id"
+  subnet_id      = var.subnets_public.id
   route_table_id = aws_route_table.cba_public_rt.id
 }
 
 resource "aws_route_table_association" "cba_subnet_rt_private" {
-  subnet_id      = "var.subnets_private"
+  subnet_id      = "var.subnets_private.id"
   route_table_id = aws_route_table.cba_private_rt.id
 }
 
@@ -179,7 +188,7 @@ data "aws_ssm_parameter" "instance_ami" {
 }
 
 data "aws_key_pair" "sample_kp" {
-  key_name = "cba_keypair2"
+  key_name = "cba_keypair1"
 }
 
 # Bastion instance
@@ -229,18 +238,17 @@ resource "aws_instance" "bastion" {
 resource "aws_lb" "loadbalancer_public" {
   name            = "loadbalancer-public"
   load_balancer_type = "application" 
-  #subnets         = var.subnets_public
+  subnets         = var.subnets_public
   security_groups = [aws_security_group.public_sg-pblb.id]
   internal        = "false"
   enable_cross_zone_load_balancing = "true"
 }
 
-resource "aws_lb_target_group" "alb-target-group" {
+resource "aws_alb_target_group" "alb-target-group" {
   name     = "alb-target-group"
   port     = 80
   protocol = "HTTP"
   vpc_id   = aws_vpc.my_vpc.id
-  target_type = "instance"
 
   health_check {
     enabled             = true
@@ -252,6 +260,7 @@ resource "aws_lb_target_group" "alb-target-group" {
   }
 }
 
+
 #create listener for public load balancer
 resource "aws_lb_listener" "listener1" {
   load_balancer_arn = aws_lb.loadbalancer_public.arn                
@@ -260,7 +269,7 @@ resource "aws_lb_listener" "listener1" {
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.alb-target-group.arn
+    target_group_arn = aws_alb_target_group.alb-target-group.arn
   }
 }
 
@@ -280,7 +289,7 @@ resource "aws_lb" "loadbalancer_private" {
 resource "aws_lb_target_group" "alb-target-group2" {
   name     = "alb-target-group2"
   port     = 80
-  protocol = "tcp"                                    # Not sure if this is the right protocol
+  protocol = "TCP"                                    # Not sure if this is the right protocol
   vpc_id   = aws_vpc.my_vpc.id
   target_type = "instance"
 
