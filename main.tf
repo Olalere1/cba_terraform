@@ -195,7 +195,7 @@ data "aws_key_pair" "sample_kp" {
 resource "aws_instance" "bastion" {
   ami                         = data.aws_ssm_parameter.instance_ami.value
   instance_type               = "${var.instance_type}"
-  key_name                    = var.key_name
+  key_name                    = data.aws_key_pair.sample_kp
   iam_instance_profile        = aws_iam_instance_profile.session-manager.id
   associate_public_ip_address = true
   security_groups            = ["aws_security_group.public_sgpblb"]
@@ -322,7 +322,7 @@ resource "aws_launch_configuration" "ec2" {
   image_id                    = data.aws_ssm_parameter.instance_ami.value
   instance_type               = "${var.instance_type}"
   security_groups             = [aws_security_group.public-sgpblb.id]
-  key_name                    = var.key_name
+  key_name                    = data.aws_key_pair.sample_kp
   iam_instance_profile        = aws_iam_instance_profile.session-manager.id
   associate_public_ip_address = false
 }
