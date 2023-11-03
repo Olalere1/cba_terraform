@@ -200,6 +200,7 @@ resource "aws_instance" "bastion" {
   associate_public_ip_address = true
   security_groups            = ["aws_security_group.public_sgpblb"]
   subnet_id                   = "aws_subnet.cba_public1.id"
+  user_data       = fileexists("docker-compose.yml") ? file("docker-compose.yml") : null
   tags = {
     Name = "Bastion"
   }
